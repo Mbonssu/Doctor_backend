@@ -643,8 +643,17 @@ async def get_favorites(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # TODO: implémenter les favoris
-    return []
+    from ...models.models import FavoriteDoctor
+    from sqlalchemy import select
+    result = await db.execute(
+        select(Doctor)
+        .options(selectinload(Doctor.user))
+        .join(FavoriteDoctor, FavoriteDoctor.doctor_id == Doctor.id)
+        .where(FavoriteDoctor.patient_id == current_user.id)
+        .order_by(FavoriteDoctor.created_at.desc())
+    )
+    doctors = result.scalars().all()
+    return [DoctorOut.model_validate(d) for d in doctors]
 
 
 @favorites_router.post("/{doctor_id}", status_code=201)
@@ -653,6 +662,20 @@ async def add_favorite(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    from ...models.models import FavoriteDoctor
+    from sqlalchemy import select
+    # Vérifier si déjà en favoris
+    existing = await db.execute(
+        select(FavoriteDoctor).where(
+            FavoriteDoctor.patient_id == current_user.id,
+            FavoriteDoctor.doctor_id == doctor_id,
+        )
+    )
+    if existing.scalar_one_or_none():
+        return {"message": "Déjà en favoris"}
+    fav = FavoriteDoctor(patient_id=current_user.id, doctor_id=doctor_id)
+    db.add(fav)
+    await db.commit()
     return {"message": "Ajouté aux favoris"}
 
 
@@ -662,7 +685,14 @@ async def remove_favorite(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    pass
+    from ...models.models import FavoriteDoctor
+    from sqlalchemy import select, delete
+    await db.execute(
+        delete(FavoriteDoctor).where(
+            FavoriteDoctor.patient_id == current_user.id,
+            FavoriteDoctor.doctor_id == doctor_id,
+        )
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
