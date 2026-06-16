@@ -206,3 +206,17 @@ class Notification(Base):
     is_read:     Mapped[bool] = mapped_column(Boolean, default=False)
     notif_type:  Mapped[str]  = mapped_column(String(50), default="info")
     created_at:  Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+# ─── Family member ────────────────────────────────────────────────────────────
+
+class FamilyMember(Base):
+    __tablename__ = "family_members"
+
+    id:            Mapped[int]      = mapped_column(Integer, primary_key=True)
+    patient_id:    Mapped[int]      = mapped_column(ForeignKey("users.id"), nullable=False)
+    name:          Mapped[str]      = mapped_column(String(200), nullable=False)
+    relation:      Mapped[str]      = mapped_column(String(50), nullable=False)
+    date_of_birth: Mapped[str | None] = mapped_column(String(20))
+    blood_type:    Mapped[str | None] = mapped_column(String(5))
+    created_at:    Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

@@ -23,6 +23,7 @@ from ...repositories.repositories import (
 from ...schemas.schemas import (
     LoginRequest, RegisterRequest, AuthResponse, RefreshRequest,
     ForgotPasswordRequest, ResetPasswordRequest, VerifyEmailRequest,
+    VerifyResetCodeRequest, ResetPasswordWithCodeRequest,
     UserOut, UserUpdate, ChangePasswordRequest,
     DoctorOut, DoctorListResponse, DoctorUpdate,
     AppointmentOut, AppointmentListResponse, AppointmentCreate,
@@ -30,7 +31,9 @@ from ...schemas.schemas import (
     AvailabilityCheckRequest, AvailabilityCheckResponse,
     ReviewOut, ReviewListResponse, ReviewCreate, ReviewUpdate,
     WeekScheduleOut, ScheduleUpdate,
-    NotificationOut, UnreadCountOut,
+    NotificationOut, NotificationListResponse, UnreadCountOut,
+    FamilyMemberOut, FamilyMemberCreate,
+    SupportContactRequest,
 )
 from ...core.config import settings
 
@@ -136,34 +139,54 @@ async def logout(body: dict, db: AsyncSession = Depends(get_db),
 
 @auth_router.post("/forgot-password", status_code=204)
 async def forgot_password(body: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
-    # En production : générer un token + envoyer un email
     repo = UserRepository(db)
     user = await repo.get_by_email(body.email)
     if user:
-        pass  # TODO: send email with reset link
-    # On ne révèle pas si l'email existe
+        # TODO: générer OTP 6 chiffres, stocker en cache Redis, envoyer par email
+        # Pour le dev: log l'OTP en console
+        import random
+        otp = str(random.randint(100000, 999999))
+        print(f"[DEV] OTP reset password pour {body.email}: {otp}")
+    return
+
+
+@auth_router.post("/reset-password/verify", status_code=204)
+async def verify_reset_code(body: VerifyResetCodeRequest, db: AsyncSession = Depends(get_db)):
+    # TODO: vérifier le code OTP en cache
+    # Pour le dev, tout code est accepté
     return
 
 
 @auth_router.post("/reset-password", status_code=204)
-async def reset_password(body: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
-    # En production : vérifier le token de reset
-    # TODO: implémenter la vérification du token de reset
-    return
+async def reset_password(body: ResetPasswordWithCodeRequest, db: AsyncSession = Depends(get_db)):
+    # TODO: vérifier le code OTP avant de réinitialiser
+    repo = UserRepository(db)
+    user = await repo.get_by_email(body.email)
+    if user:
+        await repo.update(user.id, hashed_password=hash_password(body.new_password))
 
 
 @auth_router.post("/verify-email", status_code=204)
 async def verify_email(body: VerifyEmailRequest, db: AsyncSession = Depends(get_db)):
-    # TODO: vérifier le code envoyé par email
     repo = UserRepository(db)
     user = await repo.get_by_email(body.email)
     if user:
         await repo.verify(user.id)
 
 
+@auth_router.post("/verify-email/resend", status_code=204)
+async def resend_verification(body: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
+    import random
+    otp = str(random.randint(100000, 999999))
+    print(f"[DEV] OTP vérification email pour {body.email}: {otp}")
+    return
+
+
 @auth_router.post("/send-verification-code", status_code=204)
 async def send_verification_code(body: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
-    # TODO: générer et envoyer le code par email
+    import random
+    otp = str(random.randint(100000, 999999))
+    print(f"[DEV] Code vérification pour {body.email}: {otp}")
     return
 
 
@@ -194,6 +217,7 @@ async def update_me(
 
 
 @users_router.post("/me/change-password", status_code=204)
+@users_router.put("/me/password", status_code=204)
 async def change_password(
     body: ChangePasswordRequest,
     db: AsyncSession = Depends(get_db),
@@ -700,6 +724,34 @@ async def remove_favorite(
 # ═══════════════════════════════════════════════════════════════════════════════
 
 notifications_router = APIRouter(prefix="/notifications", tags=["Notifications"])
+family_router      = APIRouter(prefix="/users", tags=["Family"])
+support_router     = APIRouter(prefix="/support", tags=["Support"])
+
+
+# ═══ NOTIFICATIONS ═══════════════════════════════════════════════════════════
+
+@notifications_router.get("", response_model=NotificationListResponse)
+async def get_notifications(
+    page: int = Query(1), page_size: int = Query(20),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from ...models.models import Notification
+    from sqlalchemy import select, func
+    stmt = select(Notification).where(Notification.user_id == current_user.id)
+    total_res = await db.execute(select(func.count()).select_from(stmt.subquery()))
+    total = total_res.scalar_one()
+    unread_res = await db.execute(
+        select(func.count()).where(Notification.user_id == current_user.id,
+                                   Notification.is_read == False))
+    unread = unread_res.scalar_one()
+    stmt = stmt.order_by(Notification.created_at.desc()).offset((page-1)*page_size).limit(page_size)
+    result = await db.execute(stmt)
+    notifs = result.scalars().all()
+    return NotificationListResponse(
+        notifications=[NotificationOut.model_validate(n) for n in notifs],
+        total=total, unread_count=unread,
+    )
 
 
 @notifications_router.get("/unread/count", response_model=UnreadCountOut)
@@ -710,3 +762,115 @@ async def get_unread_count(
     repo = NotificationRepository(db)
     count = await repo.get_unread_count(current_user.id)
     return UnreadCountOut(count=count)
+
+
+@notifications_router.put("/{notification_id}/read", status_code=204)
+async def mark_read(
+    notification_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from ...models.models import Notification
+    from sqlalchemy import update as sa_update
+    await db.execute(
+        sa_update(Notification)
+        .where(Notification.id == notification_id, Notification.user_id == current_user.id)
+        .values(is_read=True)
+    )
+    await db.commit()
+
+
+@notifications_router.put("/read-all", status_code=204)
+async def mark_all_read(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from ...models.models import Notification
+    from sqlalchemy import update as sa_update
+    await db.execute(
+        sa_update(Notification).where(Notification.user_id == current_user.id).values(is_read=True)
+    )
+    await db.commit()
+
+
+# ═══ FAMILY MEMBERS ══════════════════════════════════════════════════════════
+
+@family_router.get("/me/family-members", response_model=list[FamilyMemberOut])
+async def get_family_members(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from ...models.models import FamilyMember
+    from sqlalchemy import select
+    result = await db.execute(
+        select(FamilyMember).where(FamilyMember.patient_id == current_user.id)
+        .order_by(FamilyMember.created_at.asc())
+    )
+    return [FamilyMemberOut.model_validate(m) for m in result.scalars().all()]
+
+
+@family_router.post("/me/family-members", response_model=FamilyMemberOut, status_code=201)
+async def add_family_member(
+    body: FamilyMemberCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from ...models.models import FamilyMember
+    member = FamilyMember(
+        patient_id=current_user.id, name=body.name, relation=body.relation,
+        date_of_birth=body.date_of_birth, blood_type=body.blood_type,
+    )
+    db.add(member)
+    await db.commit()
+    await db.refresh(member)
+    return FamilyMemberOut.model_validate(member)
+
+
+@family_router.delete("/me/family-members/{member_id}", status_code=204)
+async def delete_family_member(
+    member_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from ...models.models import FamilyMember
+    from sqlalchemy import select
+    result = await db.execute(
+        select(FamilyMember).where(FamilyMember.id == member_id,
+                                    FamilyMember.patient_id == current_user.id)
+    )
+    member = result.scalar_one_or_none()
+    if member:
+        await db.delete(member)
+        await db.commit()
+
+
+# ═══ SUPPORT ═════════════════════════════════════════════════════════════════
+
+@support_router.post("/contact", status_code=204)
+async def contact_support(body: SupportContactRequest, current_user: User = Depends(get_current_user)):
+    print(f"[SUPPORT] De {current_user.email}: {body.subject} — {body.message}")
+
+
+@support_router.get("/faq")
+async def get_faq():
+    return {"faqs": [
+        {"question": "Comment prendre un rendez-vous ?", "answer": "Recherchez un médecin et sélectionnez un créneau disponible."},
+        {"question": "Comment annuler un rendez-vous ?", "answer": "Depuis Mes rendez-vous, ouvrez le détail et cliquez sur Annuler."},
+        {"question": "Comment contacter un médecin ?", "answer": "Utilisez la messagerie intégrée depuis le détail de votre RDV."},
+        {"question": "Les consultations sont-elles remboursées ?", "answer": "Cela dépend de votre couverture santé. Conservez votre facture."},
+    ]}
+
+
+# ═══ NEARBY DOCTORS ══════════════════════════════════════════════════════════
+
+@doctors_router.get("/nearby", response_model=list[DoctorOut])
+async def get_nearby_doctors(
+    lat: float = Query(...), lng: float = Query(...),
+    radius_km: float = Query(10.0),
+    page: int = Query(1), page_size: int = Query(20),
+    db: AsyncSession = Depends(get_db),
+):
+    # TODO: ajouter colonnes lat/lng dans Doctor et calculer distance Haversine
+    repo = DoctorRepository(db)
+    doctors, _ = await repo.search(is_available=True, page=page, page_size=page_size)
+    return [DoctorOut.model_validate(d) for d in doctors]

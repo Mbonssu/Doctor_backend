@@ -8,7 +8,7 @@ from .core.database import engine, Base
 from .api.v1.routes import (
     auth_router, users_router, doctors_router,
     appointments_router, reviews_router, favorites_router,
-    notifications_router,
+    notifications_router, family_router, support_router,
 )
 
 
@@ -53,11 +53,13 @@ API_PREFIX = "/api/v1"
 
 app.include_router(auth_router,          prefix=API_PREFIX)
 app.include_router(users_router,         prefix=API_PREFIX)
+app.include_router(family_router,        prefix=API_PREFIX)
 app.include_router(doctors_router,       prefix=API_PREFIX)
 app.include_router(appointments_router,  prefix=API_PREFIX)
 app.include_router(reviews_router,       prefix=API_PREFIX)
 app.include_router(favorites_router,     prefix=API_PREFIX)
 app.include_router(notifications_router, prefix=API_PREFIX)
+app.include_router(support_router,       prefix=API_PREFIX)
 
 
 # ─── Health check ─────────────────────────────────────────────────────────────

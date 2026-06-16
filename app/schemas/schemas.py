@@ -313,3 +313,51 @@ class NotificationOut(BaseModel):
 
 class UnreadCountOut(BaseModel):
     count: int
+
+# ─── OTP / Reset password ──────────────────────────────────────────────────────
+
+class VerifyResetCodeRequest(BaseModel):
+    email: EmailStr
+    code: str
+
+class ResetPasswordWithCodeRequest(BaseModel):
+    email: EmailStr
+    code: str
+    new_password: str
+
+# ─── Notifications ────────────────────────────────────────────────────────────
+
+class NotificationListResponse(BaseModel):
+    notifications: list[NotificationOut]
+    total: int
+    unread_count: int
+
+# ─── Family members ───────────────────────────────────────────────────────────
+
+class FamilyMemberOut(BaseModel):
+    id: int
+    patient_id: int
+    name: str
+    relation: str
+    date_of_birth: Optional[str] = None
+    blood_type: Optional[str] = None
+    created_at: Optional[datetime] = None
+    model_config = {"from_attributes": True}
+
+class FamilyMemberCreate(BaseModel):
+    name: str
+    relation: str
+    date_of_birth: Optional[str] = None
+    blood_type: Optional[str] = None
+
+# ─── Support ──────────────────────────────────────────────────────────────────
+
+class SupportContactRequest(BaseModel):
+    subject: str
+    message: str
+
+# ─── Nearby doctors ───────────────────────────────────────────────────────────
+
+class NearbyDoctorOut(BaseModel):
+    doctor: DoctorOut
+    distance_km: float
