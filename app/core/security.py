@@ -59,7 +59,7 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     db: AsyncSession = Depends(get_db),
 ):
-    from ..repositories.user_repository import UserRepository
+    from ..repositories.repositories import UserRepository
     payload = decode_token(credentials.credentials)
     if payload.get("type") != "access":
         raise HTTPException(status_code=401, detail="Token de type invalide")

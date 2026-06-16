@@ -306,26 +306,6 @@ async def get_by_specialty(
     )
 
 
-@doctors_router.get("/{doctor_id}/schedule", response_model=WeekScheduleOut)
-async def get_doctor_schedule(doctor_id: int, db: AsyncSession = Depends(get_db)):
-    repo = DoctorRepository(db)
-    doctor = await repo.get_by_id(doctor_id)
-    if not doctor:
-        raise HTTPException(status_code=404, detail="Médecin introuvable")
-    sched_repo = ScheduleRepository(db)
-    schedules = await sched_repo.get_week_schedule(doctor.id)
-    slots = await sched_repo.get_slots(doctor.id)
-    return WeekScheduleOut(schedules=schedules, slots=slots)
-
-
-@doctors_router.get("/{doctor_id}", response_model=DoctorOut)
-async def get_doctor(doctor_id: int, db: AsyncSession = Depends(get_db)):
-    repo = DoctorRepository(db)
-    doctor = await repo.get_by_id(doctor_id)
-    if not doctor:
-        raise HTTPException(status_code=404, detail="Médecin introuvable")
-    return DoctorOut.model_validate(doctor)
-
 
 @doctors_router.put("/me", response_model=DoctorOut)
 async def update_doctor_profile(
@@ -340,7 +320,6 @@ async def update_doctor_profile(
     updates = body.model_dump(exclude_none=True)
     doctor = await dr_repo.update(doctor.id, **updates)
     return DoctorOut.model_validate(doctor)
-
 
 # ─── Schedule du médecin ──────────────────────────────────────────────────────
 
@@ -427,6 +406,29 @@ async def get_doctor_appointments(
         appointments=[AppointmentOut.model_validate(a) for a in appointments],
         total=total, page=page, page_size=page_size,
     )
+
+
+@doctors_router.get("/{doctor_id}", response_model=DoctorOut)
+async def get_doctor(doctor_id: int, db: AsyncSession = Depends(get_db)):
+    repo = DoctorRepository(db)
+    doctor = await repo.get_by_id(doctor_id)
+    if not doctor:
+        raise HTTPException(status_code=404, detail="Médecin introuvable")
+    return DoctorOut.model_validate(doctor)
+
+
+@doctors_router.get("/{doctor_id}/schedule", response_model=WeekScheduleOut)
+async def get_doctor_schedule(doctor_id: int, db: AsyncSession = Depends(get_db)):
+    repo = DoctorRepository(db)
+    doctor = await repo.get_by_id(doctor_id)
+    if not doctor:
+        raise HTTPException(status_code=404, detail="Médecin introuvable")
+    sched_repo = ScheduleRepository(db)
+    schedules = await sched_repo.get_week_schedule(doctor.id)
+    slots = await sched_repo.get_slots(doctor.id)
+    return WeekScheduleOut(schedules=schedules, slots=slots)
+
+
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
