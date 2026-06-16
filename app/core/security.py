@@ -1,7 +1,7 @@
+import bcrypt
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,18 +9,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .config import settings
 from .database import get_db
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 bearer_scheme = HTTPBearer()
 
 
 # ─── Password ─────────────────────────────────────────────────────────────────
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    """Hash a password using bcrypt"""
+    # Tronquer le mot de passe à 72 caractères si nécessaire
+    password_bytes = password.encode('utf-8')[:72]
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(password_bytes, salt)
+    return hashed.decode('utf-8')
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    """Verify a password against its hash"""
+    plain_bytes = plain.encode('utf-8')[:72]
+    hashed_bytes = hashed.encode('utf-8')
+    return bcrypt.checkpw(plain_bytes, hashed_bytes)
 
 
 # ─── Tokens ───────────────────────────────────────────────────────────────────
@@ -73,13 +80,13 @@ async def get_current_user(
     return user
 
 
-async def require_doctor(current_user=Depends(get_current_user)):
+async def require_doctor(current_user = Depends(get_current_user)):
     if current_user.role != "doctor":
         raise HTTPException(status_code=403, detail="Accès réservé aux médecins")
     return current_user
 
 
-async def require_patient(current_user=Depends(get_current_user)):
+async def require_patient(current_user = Depends(get_current_user)):
     if current_user.role != "patient":
         raise HTTPException(status_code=403, detail="Accès réservé aux patients")
     return current_user
