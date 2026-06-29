@@ -31,7 +31,7 @@ class AppointmentType(str, enum.Enum):
     consultation  = "consultation"
     follow_up     = "follow_up"
     emergency     = "emergency"
-    teleconsult   = "teleconsult"
+    teleconsult   = "teleconsult" # ce ci sera disponible dans la version 2.0 de l'application
 
 
 # ─── User ─────────────────────────────────────────────────────────────────────
